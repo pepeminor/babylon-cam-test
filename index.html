@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>Babylon Gyro + Joystick POC</title>
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; background:#0b0d11; }
+    #renderCanvas { width:100%; height:100%; touch-action:none; display:block; }
+
+    /* HUD */
+    .hud {
+      position: fixed; inset: 0; pointer-events: none; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color:#cdd7e1; font-size:12px;
+    }
+    .topbar {
+      position: absolute; top: 10px; left: 10px; right:10px; display:flex; gap:8px; align-items:center; justify-content:space-between;
+      pointer-events:auto;
+    }
+    .btn {
+      padding:10px 12px; border-radius:12px; background:#1b2330; color:#e6eef9; border:1px solid #2a3546; cursor:pointer;
+    }
+    .btn:active { transform: translateY(1px); }
+
+    /* Virtual joysticks */
+    .stick-wrap {
+      position: absolute; bottom: 16px; width: 44vw; max-width: 220px; aspect-ratio: 1/1; border-radius: 999px;
+      background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); pointer-events:auto;
+      touch-action: none;
+    }
+    #leftStick { left: 16px; }
+    #rightStick { right: 16px; }
+
+    .stick {
+      position: absolute; width: 40%; aspect-ratio:1/1; border-radius:999px; left:30%; top:30%;
+      background: rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); backdrop-filter: blur(2px);
+      transform: translate(0,0);
+    }
+
+    .hint {
+      position:absolute; bottom: 16px; left:50%; transform: translateX(-50%); opacity:.7;
+      padding:8px 10px; background:#111723; border:1px solid #253248; border-radius:10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="renderCanvas"></canvas>
+
+  <div class="hud">
+    <div class="topbar">
+      <div id="status">Gyro: <b>chưa cấp quyền</b></div>
+      <button id="grantBtn" class="btn" hidden>Enable Gyro (iOS)</button>
+    </div>
+
+    <div id="leftStick" class="stick-wrap"><div class="stick"></div></div>
+    <div id="rightStick" class="stick-wrap"><div class="stick"></div></div>
+
+    <div class="hint">Di chuyển: joystick trái • Xoay thêm: joystick phải • Nghiêng/đổi hướng: xoay điện thoại</div>
+  </div>
+
+  <!-- Babylon CDN -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+
+  <script>
+  ;(function(){
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true, disableWebGL2Support:false });
+
+    // --- Scene setup ---
+    const createScene = function () {
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.06,0.07,0.09,1);
+
+      // Lighting & simple world
+      const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0,1,0), scene);
+      hemi.intensity = 0.9;
+      const dir = new BABYLON.DirectionalLight("dir", new BABYLON.Vector3(-0.3,-1,-0.2), scene);
+      dir.intensity = 0.4;
+
+      const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:60, height:60}, scene);
+      const gMat = new BABYLON.StandardMaterial("gmat", scene);
+      gMat.diffuseColor = new BABYLON.Color3(0.08,0.10,0.13);
+      gMat.specularColor = new BABYLON.Color3(0,0,0);
+      ground.material = gMat;
+
+      // Some boxes / landmarks
+      for (let i=0;i<30;i++){
+        const b = BABYLON.MeshBuilder.CreateBox("b"+i, {size: 1+Math.random()*2}, scene);
+        b.position = new BABYLON.Vector3((Math.random()-0.5)*40, b.scaling.y/2, (Math.random()-0.5)*40);
+        const m = new BABYLON.StandardMaterial("m"+i, scene);
+        m.diffuseColor = BABYLON.Color3.FromHSV(Math.random(), 0.35, 0.9);
+        m.specularColor = new BABYLON.Color3(0.1,0.1,0.1);
+        b.material = m;
+      }
+
+      // --- Camera: DeviceOrientationCamera for gyro look ---
+      const cam = new BABYLON.DeviceOrientationCamera("gyroCam", new BABYLON.Vector3(0, 1.7, -5), scene);
+      cam.attachControl(canvas, true);
+      // default move speed is low; we’ll control movement manually
+      cam.angularSensibility = 7; // smaller = more sensitive to gyro
+      cam.rotationQuaternion = null; // let input manage orientation
+      cam.fov = 1.0;
+
+      // Extra: limit pitch a bit (optional)
+      cam.minZ = 0.05;
+
+      // --- Virtual Joysticks ---
+      const left = document.getElementById("leftStick");
+      const right = document.getElementById("rightStick");
+      const leftDot = left.querySelector('.stick');
+      const rightDot = right.querySelector('.stick');
+
+      const leftState = { active:false, id:null, vec:new BABYLON.Vector2(0,0) };
+      const rightState = { active:false, id:null, vec:new BABYLON.Vector2(0,0) };
+
+      function setupStick(el, dot, state){
+        const rect = () => el.getBoundingClientRect();
+        const maxR = ()=> rect().width * 0.5;      // radius of wrap
+        const center = ()=> ({ x: rect().left + rect().width/2, y: rect().top + rect().height/2 });
+
+        function start(ev){
+          const t = ev.changedTouches ? ev.changedTouches[0] : ev;
+          if (state.active) return;
+          state.active = true; state.id = t.identifier ?? 'mouse';
+          move(ev);
+        }
+        function move(ev){
+          if (!state.active) return;
+          let t = null;
+          if (ev.changedTouches) {
+            for (const tt of ev.changedTouches){ if ((tt.identifier ?? 'mouse')===state.id) { t=tt; break; } }
+          } else { t = ev; }
+          if (!t) return;
+
+          const c = center(); const r = maxR();
+          let dx = t.clientX - c.x; let dy = t.clientY - c.y;
+          const len = Math.hypot(dx,dy);
+          if (len > r) { dx = dx/len*r; dy = dy/len*r; }
+          // dot position
+          const px = (dx / r) * 50; // -50..50%
+          const py = (dy / r) * 50;
+          dot.style.left = `${50 + px*0.6}%`;
+          dot.style.top  = `${50 + py*0.6}%`;
+          dot.style.transform = `translate(-50%,-50%)`;
+
+          // normalized vector (-1..1)
+          state.vec.x = dx / r;
+          state.vec.y = dy / r;
+          ev.preventDefault();
+        }
+        function end(ev){
+          if (!state.active) return;
+          let endThis = false;
+          if (ev.changedTouches){
+            for (const tt of ev.changedTouches){ if ((tt.identifier ?? 'mouse')===state.id) { endThis = true; break; } }
+          } else { endThis = true; }
+          if (!endThis) return;
+
+          state.active = false; state.id = null; state.vec.set(0,0);
+          dot.style.left = '30%'; dot.style.top = '30%'; dot.style.transform = 'translate(0,0)';
+        }
+
+        el.addEventListener('touchstart', start, {passive:false});
+        el.addEventListener('touchmove',  move,  {passive:false});
+        el.addEventListener('touchend',   end,   {passive:false});
+        el.addEventListener('mousedown',  start);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', end);
+      }
+
+      setupStick(left, leftDot, leftState);
+      setupStick(right, rightDot, rightState);
+
+      // --- Movement loop: left stick = move, right stick = yaw/pitch add-on ---
+      const speed = 6.0;            // m/s
+      const yawSpeed = 1.8;         // rad/s (right stick x)
+      const pitchSpeed = 1.2;       // rad/s (right stick y)
+
+      scene.onBeforeRenderObservable.add(()=>{
+        const dt = scene.getEngine().getDeltaTime() / 1000;
+
+        // Move based on left stick relative to where camera is facing
+        if (leftState.vec.length() > 0.01) {
+          // vec: x => right, y => down; for move forward/back we use -y
+          const forward = cam.getDirection(new BABYLON.Vector3(0,0,1)); // camera forward in BABYLON is Z+
+          const rightV  = cam.getDirection(new BABYLON.Vector3(1,0,0));
+          // Zero-out Y so we only move on ground plane
+          forward.y = 0; rightV.y = 0; forward.normalize(); rightV.normalize();
+          const moveVec = rightV.scale(leftState.vec.x).add( forward.scale(-leftState.vec.y) );
+          cam.position.addInPlace( moveVec.scale(speed * dt) );
+        }
+
+        // Supplementary look with right stick (add yaw/pitch offsets)
+        if (rightState.vec.length() > 0.01) {
+          // Only applies when DeviceOrientation data is already driving orientation; we add small manual offsets
+          // DeviceOrientationCamera exposes rotation (Euler) too; we can tweak it:
+          const rot = cam.rotation; // Euler angles in radians
+          rot.y += rightState.vec.x * yawSpeed * dt;       // yaw
+          rot.x += -rightState.vec.y * pitchSpeed * dt;    // pitch
+          rot.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, rot.x)); // clamp pitch
+        }
+      });
+
+      // Simple collision-like behaviour (optional)
+      cam.checkCollisions = true;
+      ground.checkCollisions = true;
+      cam.applyGravity = true;
+      scene.gravity = new BABYLON.Vector3(0, -0.5, 0);
+      cam.ellipsoid = new BABYLON.Vector3(0.4, 0.9, 0.4);
+
+      return scene;
+    };
+
+    const scene = createScene();
+
+    // --- iOS / permission for DeviceOrientation ---
+    const grantBtn = document.getElementById('grantBtn');
+    const statusEl = document.getElementById('status');
+
+    function isiOS(){
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    async function tryEnableGyro() {
+      // Chrome/Android: không cần requestPermission; iOS cần
+      const needRequest = typeof DeviceOrientationEvent !== 'undefined' &&
+                          typeof DeviceOrientationEvent.requestPermission === 'function';
+      if (needRequest) {
+        try {
+          const res = await DeviceOrientationEvent.requestPermission();
+          if (res === 'granted') {
+            statusEl.innerHTML = 'Gyro: <b>đã bật</b> ✅';
+            grantBtn.hidden = true;
+          } else {
+            statusEl.innerHTML = 'Gyro: <b>bị từ chối</b> ❌';
+          }
+        } catch (e){
+          statusEl.innerHTML = 'Gyro: <b>lỗi khi xin quyền</b> ❌';
+          console.error(e);
+        }
+      } else {
+        // non-iOS
+        statusEl.innerHTML = 'Gyro: <b>đang hoạt động</b> ✅';
+        grantBtn.hidden = true;
+      }
+    }
+
+    // show button only on iOS + secure origin
+    if (isiOS()) {
+      grantBtn.hidden = false;
+      statusEl.innerHTML = 'Gyro: <b>cần cấp quyền (iOS)</b>';
+      grantBtn.addEventListener('click', tryEnableGyro);
+    } else {
+      tryEnableGyro();
+    }
+
+    // --- Start render loop ---
+    engine.runRenderLoop(function () {
+      scene.render();
+    });
+
+    window.addEventListener("resize", function () {
+      engine.resize();
+    });
+  })();
+  </script>
+</body>
+</html>
