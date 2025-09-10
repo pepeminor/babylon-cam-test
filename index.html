@@ -200,7 +200,7 @@
         if (needOri) granted = (await DeviceOrientationEvent.requestPermission()) === 'granted' || granted;
         if (needMot) granted = (await DeviceMotionEvent.requestPermission()) === 'granted' || granted;
         if (!needOri && !needMot) granted = true; // Android thường không cần popup
-        window.location.reload();
+        
       }catch(e){ console.warn(e); }
       statusEl.innerHTML = granted ? 'Gyro: <b>đã bật</b> ✅' : 'Gyro: <b>bị từ chối</b> ❌';
     }
