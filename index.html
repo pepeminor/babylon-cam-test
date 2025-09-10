@@ -1,195 +1,298 @@
 <!doctype html>
 <html lang="vi">
+
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<title>Babylon — Gyro + Joystick + Debug</title>
-<style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#0b0d11}
-  #renderCanvas{width:100%;height:100%;display:block;touch-action:none}
-  .hud{position:fixed;inset:0;pointer-events:none;font:12px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cdd7e1}
-  .topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;pointer-events:auto}
-  .btn{padding:8px 10px;border-radius:10px;background:#182131;border:1px solid #2b3850;color:#e8f0fa;cursor:pointer}
-  .panel{position:absolute;top:10px;right:10px;background:#0f1726;border:1px solid #27324a;border-radius:10px;padding:10px 12px;pointer-events:auto;min-width:140px}
-  .row{display:flex;align-items:center;gap:8px;margin:6px 0}
-  .mono{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.9}
-  .stick-wrap{position:absolute;bottom:16px;left:16px;width:44vw;max-width:220px;aspect-ratio:1/1;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);pointer-events:auto;touch-action:none}
-  .stick{position:absolute;width:40%;aspect-ratio:1/1;border-radius:999px;left:30%;top:30%;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3)}
-  .hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);padding:8px 10px;background:#101724;border:1px solid #253248;border-radius:10px;opacity:.9}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Gyro + Joystick POC (Babylon)</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #0b0d11;
+      overflow: hidden
+    }
+
+    #renderCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none
+    }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      color: #cdd7e1;
+      font: 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif
+    }
+
+    .top {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: auto
+    }
+
+    .btn {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #182131;
+      border: 1px solid #2b3850;
+      color: #e8f0fa;
+      cursor: pointer
+    }
+
+    .btn:active {
+      transform: translateY(1px)
+    }
+
+    .panel {
+      position: absolute;
+      top: 10vh;
+      right: 10px;
+      background: #0f1726;
+      border: 1px solid #27324a;
+      border-radius: 10px;
+      padding: 10px 12px;
+      pointer-events: auto;
+      min-width: 160px
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 6px 0
+    }
+
+    .mono {
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      opacity: .95
+    }
+
+    .stick-wrap {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      width: 44vw;
+      max-width: 220px;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .06);
+      border: 1px solid rgba(255, 255, 255, .12);
+      pointer-events: auto;
+      touch-action: none
+    }
+
+    .stick {
+      position: absolute;
+      width: 40%;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      left: 30%;
+      top: 30%;
+      background: rgba(255, 255, 255, .18);
+      border: 1px solid rgba(255, 255, 255, .3)
+    }
+
+    .hint {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 10px;
+      background: #101724;
+      border: 1px solid #253248;
+      border-radius: 10px;
+      opacity: .9
+    }
+  </style>
 </head>
+
 <body>
-<canvas id="renderCanvas"></canvas>
+  <canvas id="renderCanvas"></canvas>
 
-<div class="hud">
-  <div class="topbar">
-    <div id="status">Gyro: <b>chưa cấp quyền</b></div>
-    <button id="grantBtn" class="btn" hidden>Enable Sensors (iOS)</button>
+  <div class="hud">
+    <div class="top">
+      <div id="status">Gyro: <b>chưa cấp quyền</b></div>
+      <div style="display:flex;gap:8px">
+        <button id="grantBtn" class="btn">Enable Sensors</button>
+        <button id="recenterBtn" class="btn">Recenter</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <label><input id="chkDebug" type="checkbox" /> Debug</label>
+      </div>
+      <div class="mono" id="dbg">α: — β: — γ: —<br />FPS: —</div>
+    </div>
+
+    <div class="stick-wrap" id="leftStick">
+      <div class="stick"></div>
+    </div>
+    <div class="hint">Di chuyển: joystick trái • Lia nhìn: xoay điện thoại (360°) • Không cần drag</div>
   </div>
 
-  <div class="panel">
-    <div class="row"><label><input id="chkDebug" type="checkbox"/> Debug</label></div>
-    <div class="row"><label><input id="chkLockDrag" type="checkbox" checked/> Lock drag</label></div>
-    <div class="mono" id="dbg">α: — β: — γ: —<br/>FPS: —</div>
-  </div>
+  <!-- Babylon CDN -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
 
-  <div class="stick-wrap" id="leftStick"><div class="stick"></div></div>
-  <div class="hint">Di chuyển: joystick trái • Lia nhìn: xoay điện thoại (360°)</div>
-</div>
+  <script>
+    (function () {
+      const canvas = document.getElementById('renderCanvas');
+      const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.06, 0.07, 0.09, 1);
 
-<script src="https://cdn.babylonjs.com/babylon.js"></script>
-<script>
-(function(){
-  const canvas = document.getElementById('renderCanvas');
-  const engine = new BABYLON.Engine(canvas, true, {preserveDrawingBuffer:true, stencil:true});
-  const scene = new BABYLON.Scene(engine);
-  scene.clearColor = new BABYLON.Color4(0.06,0.07,0.09,1);
+      // ===== Lights & world =====
+      new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0, 1, 0), scene).intensity = 1.1;
+      const dir = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-0.4, -1, -0.3), scene); dir.intensity = .6;
 
-  // ==== world ====
-  const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0,1,0), scene); hemi.intensity=1.1;
-  const dir  = new BABYLON.DirectionalLight("dir", new BABYLON.Vector3(-0.4,-1,-0.3), scene); dir.intensity=.6;
+      const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: 120, height: 120 }, scene);
+      const gMat = new BABYLON.StandardMaterial('gmat', scene);
+      gMat.diffuseColor = new BABYLON.Color3(0.10, 0.12, 0.15); gMat.specularColor = new BABYLON.Color3(0, 0, 0);
+      ground.material = gMat;
 
-  const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:120, height:120}, scene);
-  const gMat = new BABYLON.StandardMaterial("gmat", scene);
-  gMat.diffuseColor = new BABYLON.Color3(0.10,0.12,0.15); ground.material = gMat;
+      // Landmarks
+      for (let i = 0; i < 60; i++) {
+        const b = BABYLON.MeshBuilder.CreateBox('b' + i, { size: 1.2 + Math.random() * 1.8 }, scene);
+        b.position = new BABYLON.Vector3((Math.random() - 0.5) * 100, .6, (Math.random() - 0.5) * 100);
+        const m = new BABYLON.StandardMaterial('m' + i, scene);
+        m.emissiveColor = BABYLON.Color3.FromHSV(Math.random(), .3, .95);
+        b.material = m;
+      }
 
-  // landmarks
-  for(let i=0;i<60;i++){
-    const b = BABYLON.MeshBuilder.CreateBox("b"+i, {size:1.2+Math.random()*1.8}, scene);
-    b.position = new BABYLON.Vector3((Math.random()-0.5)*100, .6, (Math.random()-0.5)*100);
-    const m = new BABYLON.StandardMaterial("m"+i, scene);
-    m.emissiveColor = BABYLON.Color3.FromHSV(Math.random(), .30, .95);
-    b.material = m;
-  }
+      // ===== Player (cube) =====
+      const player = BABYLON.MeshBuilder.CreateBox('player', { size: 1 }, scene);
+      player.position = new BABYLON.Vector3(0, .5, 0);
+      const pm = new BABYLON.StandardMaterial('pm', scene);
+      pm.diffuseColor = new BABYLON.Color3(0.2, 0.8, 0.35); pm.specularColor = new BABYLON.Color3(0, 0, 0);
+      player.material = pm;
 
-  // ==== player (cube) ====
-  const player = BABYLON.MeshBuilder.CreateBox("player", {size:1}, scene);
-  player.position = new BABYLON.Vector3(0, 0.5, 0);
-  const pm = new BABYLON.StandardMaterial("pm", scene);
-  pm.diffuseColor = new BABYLON.Color3(0.2,0.8,0.35);
-  pm.specularColor = new BABYLON.Color3(0,0,0);
-  player.material = pm;
+      // ===== Camera: FPV, gyro-only =====
+      const cam = new BABYLON.FreeCamera('fpv', new BABYLON.Vector3(0, 1.6, 0), scene);
+      cam.inputs.clear();                   // bỏ toàn bộ input chuột/touch
+      cam.inputs.addDeviceOrientation();    // chỉ dùng gyro
+      cam.minZ = 0.05; cam.fov = 1.0; cam.inertia = 0.6;
+      // KHÔNG attachControl → không drag
 
-  // ==== camera (third-person follow, gyro controls the look) ====
-  const cam = new BABYLON.FreeCamera("cam", new BABYLON.Vector3(0, 2, -6), scene);
-  cam.minZ = 0.05; cam.inertia = 0.6; cam.fov = 1.0;
-  cam.inputs.addDeviceOrientation();              // <— Gyro input
-  cam.attachControl(canvas, true);                // allow drag when unlocked
+      // Mỗi frame: đặt camera vào "đầu" nhân vật
+      function stickCameraToHead() {
+        cam.position.copyFrom(player.position).addInPlace(new BABYLON.Vector3(0, 1.6, 0));
+      }
 
-  // follow offset (relative to camera forward): behind & above the player
-  const followDist = 4.0, followHeight = 2.0;
+      // ===== Virtual joystick (left = move) =====
+      const leftEl = document.getElementById('leftStick');
+      const leftDot = leftEl.querySelector('.stick');
+      const left = { active: false, id: null, vec: new BABYLON.Vector2(0, 0) };
 
-  function placeCameraBehindPlayer(){
-    const forward = cam.getDirection(new BABYLON.Vector3(0,0,1)); // camera forward (Z+)
-    const back    = forward.scale(-1);
-    const up      = new BABYLON.Vector3(0,1,0);
-    // camera position = player - back*dist + up*height
-    cam.position.copyFrom( player.position.add( back.scale(followDist) ).add( up.scale(followHeight) ) );
-  }
-  placeCameraBehindPlayer();
+      (function setupStick(el, dot, state) {
+        const rect = () => el.getBoundingClientRect(), R = () => rect().width / 2, C = () => ({ x: rect().left + rect().width / 2, y: rect().top + rect().height / 2 });
+        function start(e) { const t = e.changedTouches ? e.changedTouches[0] : e; if (state.active) return; state.active = true; state.id = t.identifier ?? 'mouse'; move(e); }
+        function move(e) {
+          if (!state.active) return;
+          let t = null; if (e.changedTouches) { for (const tt of e.changedTouches) { if ((tt.identifier ?? 'mouse') === state.id) { t = tt; break; } } } else t = e;
+          if (!t) return;
+          const c = C(), r = R(); let dx = t.clientX - c.x, dy = t.clientY - c.y; const len = Math.hypot(dx, dy); if (len > r) { dx = dx / len * r; dy = dy / len * r; }
+          dot.style.left = `${50 + (dx / r) * 30}%`; dot.style.top = `${50 + (dy / r) * 30}%`; dot.style.transform = 'translate(-50%,-50%)';
+          state.vec.x = dx / r; state.vec.y = dy / r; e.preventDefault();
+        }
+        function end() {
+          if (!state.active) return;
+          state.active = false; state.id = null; state.vec.set(0, 0);
+          dot.style.left = '30%'; dot.style.top = '30%'; dot.style.transform = 'translate(0,0)';
+        }
+        el.addEventListener('touchstart', start, { passive: false });
+        el.addEventListener('touchmove', move, { passive: false });
+        el.addEventListener('touchend', end, { passive: false });
+        el.addEventListener('mousedown', start);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', end);
+      })(leftEl, leftDot, left);
 
-  // disable pinch & wheel zoom for stability
-  cam.inputs.attached.mousewheel.detachControl();
+      // ===== Movement relative to current look =====
+      const speed = 6.0; // m/s
+      scene.onBeforeRenderObservable.add(() => {
+        const dt = scene.getEngine().getDeltaTime() / 1000;
 
-  // ==== joystick (left = move) ====
-  const leftEl = document.getElementById('leftStick'), leftDot = leftEl.querySelector('.stick');
-  const leftState = {active:false, id:null, vec:new BABYLON.Vector2(0,0)};
-  function setupStick(el, dot, state){
-    const rect=()=>el.getBoundingClientRect(), R=()=>rect().width/2, C=()=>({x:rect().left+rect().width/2, y:rect().top+rect().height/2});
-    function start(e){ const t=e.changedTouches?e.changedTouches[0]:e; if(state.active) return; state.active=true; state.id=t.identifier??'mouse'; move(e); }
-    function move(e){
-      if(!state.active) return;
-      let t=null; if(e.changedTouches){ for(const tt of e.changedTouches){ if((tt.identifier??'mouse')===state.id){ t=tt; break; } } } else { t=e; }
-      if(!t) return;
-      const c=C(), r=R(); let dx=t.clientX-c.x, dy=t.clientY-c.y; const len=Math.hypot(dx,dy); if(len>r){dx=dx/len*r; dy=dy/len*r;}
-      dot.style.left=`${50+(dx/r)*30}%`; dot.style.top=`${50+(dy/r)*30}%`; dot.style.transform='translate(-50%,-50%)';
-      state.vec.x = dx/r; state.vec.y = dy/r; e.preventDefault();
-    }
-    function end(e){
-      if(!state.active) return;
-      let endThis=false; if(e.changedTouches){ for(const tt of e.changedTouches){ if((tt.identifier??'mouse')===state.id){ endThis=true; break; } } } else endThis=true;
-      if(!endThis) return; state.active=false; state.id=null; state.vec.set(0,0); dot.style.left='30%'; dot.style.top='30%'; dot.style.transform='translate(0,0)';
-    }
-    el.addEventListener('touchstart',start,{passive:false}); el.addEventListener('touchmove',move,{passive:false}); el.addEventListener('touchend',end,{passive:false});
-    el.addEventListener('mousedown',start); window.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
-  }
-  setupStick(leftEl, leftDot, leftState);
+        if (left.vec.length() > 0.01) {
+          const f = cam.getDirection(new BABYLON.Vector3(0, 0, 1)); // forward
+          const r = cam.getDirection(new BABYLON.Vector3(1, 0, 0)); // right
+          f.y = 0; r.y = 0; f.normalize(); r.normalize();
+          const move = r.scale(left.vec.x).add(f.scale(-left.vec.y));
+          player.position.addInPlace(move.scale(speed * dt));
+        }
 
-  // movement params
-  const speed = 6.0; // m/s
+        stickCameraToHead();
+      });
 
-  scene.onBeforeRenderObservable.add(()=>{
-    const dt = scene.getEngine().getDeltaTime()/1000;
+      // Optional collisions/gravity
+      cam.checkCollisions = true; ground.checkCollisions = true;
+      cam.applyGravity = true; scene.gravity = new BABYLON.Vector3(0, -0.5, 0);
+      cam.ellipsoid = new BABYLON.Vector3(0.4, 0.9, 0.4);
 
-    // move player on ground plane relative to current camera facing
-    if(leftState.vec.length()>0.01){
-      const f = cam.getDirection(new BABYLON.Vector3(0,0,1)); // forward
-      const r = cam.getDirection(new BABYLON.Vector3(1,0,0)); // right
-      f.y=0; r.y=0; f.normalize(); r.normalize();
-      const move = r.scale(leftState.vec.x).add( f.scale(-leftState.vec.y) );
-      player.position.addInPlace( move.scale(speed*dt) );
-    }
+      // ===== Permission + Debug UI =====
+      const statusEl = document.getElementById('status');
+      const grantBtn = document.getElementById('grantBtn');
+      const recenterBtn = document.getElementById('recenterBtn');
+      const chkDebug = document.getElementById('chkDebug');
+      const dbgEl = document.getElementById('dbg');
 
-    // keep camera behind player according to current viewing direction (gyro)
-    placeCameraBehindPlayer();
-  });
+      // Debug toggle
+      chkDebug.addEventListener('change', () => {
+        const show = chkDebug.checked;
+        dbgEl.style.display = show ? 'block' : 'none';
+      });
+      dbgEl.style.display = 'none'; // default OFF
 
-  // collisions/gravity optional
-  cam.checkCollisions = true; ground.checkCollisions = true;
-  cam.applyGravity    = true; scene.gravity = new BABYLON.Vector3(0,-0.5,0);
-  cam.ellipsoid       = new BABYLON.Vector3(0.4,0.9,0.4);
+      // α/β/γ readout
+      window.addEventListener('deviceorientation', (e) => {
+        if (!chkDebug.checked) return;
+        const a = e.alpha != null ? e.alpha.toFixed(1) : '—', b = e.beta != null ? e.beta.toFixed(1) : '—', g = e.gamma != null ? e.gamma.toFixed(1) : '—';
+        const lines = dbgEl.innerHTML.split('<br/>'); lines[0] = `α: ${a} β: ${b} γ: ${g}`; dbgEl.innerHTML = lines.join('<br/>');
+      });
 
-  // ==== permissions & debug ====
-  const grantBtn=document.getElementById('grantBtn'), statusEl=document.getElementById('status'), dbgEl=document.getElementById('dbg');
-  const chkDebug=document.getElementById('chkDebug'), chkLockDrag=document.getElementById('chkLockDrag');
-  let axes=null; // AxesViewer
-  function updateFPS(){ dbgEl.innerHTML = dbgEl.innerHTML.replace(/FPS:.*/,'FPS: '+engine.getFps().toFixed(0)); }
+      // FPS readout
+      function updateFPS() {
+        if (!chkDebug.checked) return;
+        dbgEl.innerHTML = dbgEl.innerHTML.replace(/FPS:.*/, 'FPS: ' + engine.getFps().toFixed(0));
+      }
 
-  // deviceorientation readout
-  window.addEventListener('deviceorientation',(e)=>{
-    const a=e.alpha!=null?e.alpha.toFixed(1):'—', b=e.beta!=null?e.beta.toFixed(1):'—', g=e.gamma!=null?e.gamma.toFixed(1):'—';
-    const lines = dbgEl.innerHTML.split('<br/>'); lines[0]=`α: ${a} β: ${b} γ: ${g}`; dbgEl.innerHTML=lines.join('<br/>');
-  });
+      // Recenter: lấy hướng hiện tại làm 0°
+      let yawOffset = 0;
+      recenterBtn.addEventListener('click', () => { yawOffset = -cam.rotation.y; });
+      scene.onBeforeRenderObservable.add(() => {
+        if (yawOffset) { cam.rotation.y += yawOffset; yawOffset = 0; }
+      });
 
-  chkDebug.addEventListener('change',()=>{
-    if(chkDebug.checked){
-      if(!axes) axes = new BABYLON.AxesViewer(scene, 2);
-      scene.debugLayer.show({embedMode:true}); // small overlay
-    } else {
-      if(axes){ axes.dispose(); axes=null; }
-      scene.debugLayer.hide();
-    }
-  });
+      // Xin quyền cảm biến (iOS)
+      async function requestSensors() {
+        let granted = false;
+        try {
+          const needOri = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+          const needMot = typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
+          if (needOri) granted = (await DeviceOrientationEvent.requestPermission()) === 'granted' || granted;
+          if (needMot) granted = (await DeviceMotionEvent.requestPermission()) === 'granted' || granted;
+          if (!needOri && !needMot) granted = true; // Android/desktop -> không cần popup
+        } catch (e) { console.warn(e); }
+        statusEl.innerHTML = granted ? 'Gyro: <b>đã bật</b> ✅' : 'Gyro: <b>bị từ chối</b> ❌';
+      }
+      grantBtn.addEventListener('click', requestSensors);
+      requestSensors(); // thử auto cho Android
 
-  chkLockDrag.addEventListener('change',()=>{
-    // lock = không cho kéo xoay bằng chuột/ngón tay (để chỉ dùng gyro)
-    if(chkLockDrag.checked){
-      cam.detachControl();           // remove pointer drag
-      cam.inputs.addDeviceOrientation();
-    } else {
-      cam.attachControl(canvas, true);
-    }
-  });
-
-  function isiOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }
-  async function requestSensors(){
-    let granted=false;
-    try{
-      const needOri = typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function';
-      const needMot = typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function';
-      if(needOri){ granted = (await DeviceOrientationEvent.requestPermission())==='granted' || granted; }
-      if(needMot){ granted = (await DeviceMotionEvent.requestPermission())==='granted' || granted; }
-      if(!needOri && !needMot) granted=true;
-    }catch(e){ console.warn(e); }
-    statusEl.innerHTML = granted ? 'Gyro: <b>đã bật</b> ✅' : 'Gyro: <b>bị từ chối</b> ❌';
-    if(granted) grantBtn.hidden = true;
-  }
-  if(isiOS()){ grantBtn.hidden=false; grantBtn.onclick=requestSensors; statusEl.innerHTML='Gyro: <b>cần cấp quyền (iOS)</b>'; } else { requestSensors(); }
-
-  // render loop
-  engine.runRenderLoop(()=>{ scene.render(); updateFPS(); });
-  window.addEventListener('resize',()=>engine.resize());
-})();
-</script>
+      // Render loop
+      engine.runRenderLoop(() => { scene.render(); updateFPS(); });
+      window.addEventListener('resize', () => engine.resize());
+    })();
+  </script>
 </body>
+
 </html>
