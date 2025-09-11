@@ -124,7 +124,7 @@
     <div class="top">
       <div id="status">Gyro: <b>chưa cấp quyền</b></div>
       <div style="display:flex;gap:8px">
-        <button id="grantBtn" class="btn">Enable Sensors</button>
+        <button id="grantBtn" class="btn">Allow Gyro</button>
         <button id="recenterBtn" class="btn">Recenter</button>
       </div>
     </div>
@@ -161,7 +161,8 @@
         const b = BABYLON.MeshBuilder.CreateBox('b' + i, { size: 1.2 + Math.random() * 1.8 }, scene);
         b.position = new BABYLON.Vector3((Math.random() - 0.5) * 100, .6, (Math.random() - 0.5) * 100);
         const m = new BABYLON.StandardMaterial('m' + i, scene);
-        m.emissiveColor = BABYLON.Color3.FromHSV(Math.random(), .3, .95);
+        m.diffuseColor = new BABYLON.Color3(0.0, 0.85, 0.25);
+        // m.emissiveColor = BABYLON.Color3.FromHSV(Math.random(), 4, .4);
         b.material = m;
       }
 
@@ -300,14 +301,14 @@
           if (!needOri && !needMot) granted = true; // Android thường không cần popup
 
         } catch (e) { console.warn(e); }
-        statusEl.innerHTML = granted ? 'Gyro: <b>đã bật</b> ✅' : 'Gyro: <b>bị từ chối</b> ❌';
+        statusEl.innerHTML = granted ? 'Gyro: <b>ON</b> ✅' : 'Gyro: <b>Denied</b> ❌';
       }
       grantBtn.addEventListener('click', async () => {
         await requestSensors();
         // trick
         setTimeout(() => {
           window.location.reload();
-        }, 3000)
+        }, 1000)
       });
 
       requestSensors(); // thử auto cho Android
